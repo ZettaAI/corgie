@@ -16,6 +16,8 @@ from corgie.cli.render import render
 COMMAND_LIST.append(render)
 from corgie.cli.copy import copy
 COMMAND_LIST.append(copy)
+from corgie.cli.morphological_op import morphological_op
+COMMAND_LIST.append(morphological_op)
 
 # To add new commands, create a file in this folder implementing a command,
 # import the command here and add it to the list:

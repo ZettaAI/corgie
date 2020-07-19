@@ -26,7 +26,8 @@ setuptools.setup(
       'click',
       'click-option-group',
       'procspec',
-      'modelhouse'
+      'modelhouse',
+      'scipy',
     ],
     entry_points={
         "console_scripts": [
