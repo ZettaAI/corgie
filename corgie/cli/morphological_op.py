@@ -1,5 +1,6 @@
 import click
 from scipy import ndimage
+import numpy as np
 
 from corgie import scheduling, helpers
 
@@ -99,9 +100,12 @@ class MorphologyTask(scheduling.Task):
         padded_bcube = self.bcube.uncrop(self.pad, self.mip)
 
         src_data = self.src_layer.read(bcube=padded_bcube, mip=self.mip).numpy()
+        src_data = np.transpose(src_data, (2,3,0,1)).squeeze()
+
         mask_data = None
         if self.mask_layer is not None:
             mask_data = self.mask_layer.read(bcube=padded_bcube, mip=self.mip).numpy()
+            mask_data = np.transpose(mask_data, (2,3,0,1)).squeeze()
 
         dst_data = morph_op(
             src_data,
@@ -112,6 +116,9 @@ class MorphologyTask(scheduling.Task):
             border_value=self.border_value,
             brute_force=self.brute_force
         )
+
+        dst_data = np.expand_dims(np.atleast_3d(dst_data), 3)
+        dst_data = np.transpose(dst_data, (2,3,0,1))
 
         cropped_out = helpers.crop(dst_data, self.pad)
         self.dst_layer.write(cropped_out, bcube=self.bcube, mip=self.mip)
