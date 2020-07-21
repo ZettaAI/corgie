@@ -1,3 +1,4 @@
+import functools
 import click
 from scipy import ndimage
 import numpy as np
@@ -13,8 +14,8 @@ from corgie.argparsers import LAYER_HELP_STR, \
 class MorphologyJob(scheduling.Job):
     def __init__(self, src_layer, dst_layer, mip, pad, bcube, chunk_xy, chunk_z,
                  *,
-                 mask_layer=None, op=None, structure=None, iterations=1, origin=0,
-                 border_value=0, brute_force=False,
+                 mask_layer=None, op=None, kernel=None, radius=1,
+                 iterations=1, origin=(0,0), border_value=0
                  ):
         super().__init__()
         self.src_layer = src_layer
@@ -26,11 +27,11 @@ class MorphologyJob(scheduling.Job):
         self.chunk_z = chunk_z
         self.mask_layer = mask_layer
         self.op = op
-        self.structure = structure
+        self.kernel = kernel
+        self.radius = radius
         self.iterations = iterations
         self.origin = origin
         self.border_value = border_value
-        self.brute_force = brute_force
 
     def task_generator(self):
         kwargs = {
@@ -39,11 +40,11 @@ class MorphologyJob(scheduling.Job):
             'mip': self.mip,
             'pad': self.pad,
             'mask_layer': self.mask_layer,
-            'structure': self.structure,
+            'kernel': self.kernel,
+            'radius': self.radius,
             'iterations': self.iterations,
             'origin': self.origin,
             'border_value': self.border_value,
-            'brute_force': self.brute_force
         }
 
         chunks = self.dst_layer.break_bcube_into_chunks(
@@ -81,8 +82,8 @@ class MorphologyJob(scheduling.Job):
 
 class MorphologyTask(scheduling.Task):
     def __init__(self, src_layer, dst_layer, mip, pad, mask_layer,
-                 bcube, structure, iterations, origin,
-                 border_value, brute_force):
+                 bcube, kernel: str, radius, iterations, origin,
+                 border_value):
         super().__init__(self)
         self.src_layer = src_layer
         self.dst_layer = dst_layer
@@ -90,11 +91,27 @@ class MorphologyTask(scheduling.Task):
         self.pad = pad
         self.bcube = bcube
         self.mask_layer = mask_layer
-        self.structure = structure
+        self.kernel = kernel.lower()
+        self.radius = radius
         self.iterations = iterations
         self.origin = origin
         self.border_value = border_value
-        self.brute_force = brute_force
+
+    @property
+    @functools.lru_cache()
+    def structure(self):
+        N = 2 * self.radius + 1
+        y_off = self.origin[0] + self.radius
+        x_off = self.origin[1] + self.radius
+        y, x = np.ogrid[-y_off : N - y_off, -x_off : N - x_off]
+
+        if self.kernel == 'disk':
+            return x * x + y * y <= self.radius * self.radius
+        elif self.kernel == 'diamond':
+            return abs(x) + abs(y) <= self.radius
+        elif self.kernel == 'box':
+            return np.maximum(abs(x), abs(y)) <= self.radius
+
 
     def execute(self, morph_op):
         padded_bcube = self.bcube.uncrop(self.pad, self.mip)
@@ -114,7 +131,6 @@ class MorphologyTask(scheduling.Task):
             origin=self.origin,
             mask=mask_data,
             border_value=self.border_value,
-            brute_force=self.brute_force
         )
 
         dst_data = np.expand_dims(np.atleast_3d(dst_data), 3)
@@ -126,44 +142,44 @@ class MorphologyTask(scheduling.Task):
 
 class BinaryClosingTask(MorphologyTask):
     def __init__(self, src_layer, dst_layer, mip, pad, mask_layer,
-                 bcube, structure, iterations, origin,
-                 border_value, brute_force):
+                 bcube, kernel, radius, iterations, origin,
+                 border_value):
         super().__init__(src_layer, dst_layer, mip, pad, mask_layer,
-                 bcube, structure, iterations, origin,
-                 border_value, brute_force)
+                 bcube, kernel, radius, iterations, origin,
+                 border_value)
 
     def execute(self):
         super().execute(ndimage.binary_closing)
 
 class BinaryDilationTask(MorphologyTask):
     def __init__(self, src_layer, dst_layer, mip, pad, mask_layer,
-                 bcube, structure, iterations, origin,
-                 border_value, brute_force):
+                 bcube, kernel, radius, iterations, origin,
+                 border_value):
         super().__init__(src_layer, dst_layer, mip, pad, mask_layer,
-                 bcube, structure, iterations, origin,
-                 border_value, brute_force)
+                 bcube, kernel, radius, iterations, origin,
+                 border_value)
 
     def execute(self):
         super().execute(ndimage.binary_dilation)
 
 class BinaryErosionTask(MorphologyTask):
     def __init__(self, src_layer, dst_layer, mip, pad, mask_layer,
-                 bcube, structure, iterations, origin,
-                 border_value, brute_force):
+                 bcube, kernel, radius, iterations, origin,
+                 border_value):
         super().__init__(src_layer, dst_layer, mip, pad, mask_layer,
-                 bcube, structure, iterations, origin,
-                 border_value, brute_force)
+                 bcube, kernel, radius, iterations, origin,
+                 border_value)
 
     def execute(self):
         super().execute(ndimage.binary_erosion)
 
 class BinaryOpeningTask(MorphologyTask):
     def __init__(self, src_layer, dst_layer, mip, pad, mask_layer,
-                 bcube, structure, iterations, origin,
-                 border_value, brute_force):
+                 bcube, kernel, radius, iterations, origin,
+                 border_value):
         super().__init__(src_layer, dst_layer, mip, pad, mask_layer,
-                 bcube, structure, iterations, origin,
-                 border_value, brute_force)
+                 bcube, kernel, radius, iterations, origin,
+                 border_value)
 
     def execute(self):
         super().execute(ndimage.binary_opening)
@@ -184,11 +200,11 @@ class BinaryOpeningTask(MorphologyTask):
 @corgie_option('--op',                   nargs=1, type=str, required=True)
 @corgie_option('--mask_spec',            nargs=1, type=str,
         help='Optional input mask layer spec. If a mask is given, only those elements with a True value at the corresponding mask element are modified at each iteration.')
+@corgie_option('--kernel',               nargs=1, type=click.Choice(['diamond', 'box', 'disk'], case_sensitive=False))
+@corgie_option('--radius',               nargs=1, type=int, default=1)
 @corgie_option('--iterations',           nargs=1, type=int, default=1)
-@corgie_option('--origin',               nargs=1, type=int, default=0)
+@corgie_option('--origin',               nargs=2, type=int, default=(0,0))
 @corgie_option('--border_value',         nargs=1, type=int, default=0)
-@corgie_option('--brute_force',          nargs=1, type=bool, default=False)
-
 
 @corgie_optgroup('Task Specification')
 @corgie_option('--chunk_xy',       '-c', nargs=1, type=int, default=1024)
@@ -203,11 +219,9 @@ class BinaryOpeningTask(MorphologyTask):
 
 @click.pass_context
 def morphological_op(ctx, src_layer_spec, dst_layer_spec, op, pad, mip,
-         mask_spec, iterations, origin, border_value, brute_force, 
+         mask_spec, kernel, radius, iterations, origin, border_value, 
          chunk_xy, chunk_z, start_coord, end_coord, coord_mip):
     scheduler = ctx.obj['scheduler']
-    # TODO: Figure out how to support structuring element
-    structure=None
 
     corgie_logger.debug("Setting up layers...")
     src_layer = create_layer_from_spec(src_layer_spec,
@@ -237,11 +251,11 @@ def morphological_op(ctx, src_layer_spec, dst_layer_spec, op, pad, mip,
         chunk_z=chunk_z,
         mask_layer=mask_layer,
         op=op,
-        structure=structure,
+        kernel=kernel,
+        radius=radius,
         iterations=iterations,
         origin=origin,
         border_value=border_value,
-        brute_force=brute_force
     )
 
     # create scheduler and execute the job
