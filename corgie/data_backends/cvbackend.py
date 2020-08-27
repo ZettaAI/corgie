@@ -169,8 +169,8 @@ class CVLayerBase(BaseLayerBackend):
             if chunk_z > aligned_bcube.z_size():
                 z_adj = chunk_z - aligned_bcube.z_size()
             else:
-                rem = aligned_bcube.z_size() % chunk_z
-                if rem == 0:
+                z_rem = aligned_bcube.z_size() % chunk_z
+                if z_rem == 0:
                     z_adj = 0
                 else:
                     z_adj = chunk_z - z_rem
@@ -209,7 +209,7 @@ class CVFieldLayer(CVLayerBase, layers.FieldLayer):
         if backend_dtype not in self.supported_backend_dtypes:
             raise exceptions.ArgumentError("Field layer 'backend_type'",
                     "\n{} is not a supported field backend data type. \n"
-                    "Supported backend data types: {}".format(backend_type,
+                    "Supported backend data types: {}".format(backend_dtype,
                         self.supported_backend_dtypes)
                     )
         self.backend_dtype = backend_dtype

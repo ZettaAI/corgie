@@ -25,7 +25,7 @@ LAYER_HELP_STR = """
    \t "name": str, DEFAULT -- same as layer type. """\
    """**Required** if given more than 1 layer of the same type ; \n
    \t "data_backend": str from {} ; \n
-   \t "layer_args": a dictionary with additional layer parameters,
+   \t "args": a dictionary with additional layer parameters,
    eg binarization scheme for masks data_mip_ranges, etc; \n
    Required keys: "path". \n
    """.format(get_layer_types(), get_data_backends())
@@ -61,7 +61,9 @@ def create_layer_from_spec(spec_str, reference=None, caller_name=None,
         ))
 
     if allowed_types is not None and layer_type not in allowed_types:
-        raise exceptions.ArgumentError(arg_spec, 'must be of type in {allowed_types}')
+        raise exceptions.ArgumentError(
+            layer_type, 'must be of type in {}'.format(allowed_types)
+        )
 
     backend = str_to_backend(data_backend)()
 

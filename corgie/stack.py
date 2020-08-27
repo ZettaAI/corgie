@@ -10,6 +10,7 @@ import copy
 
 from corgie import exceptions, helpers
 from corgie.layers import str_to_layer_type
+from corgie.helpers import compose_fields
 
 class StackBase:
     def __init__(self, name=None):
@@ -33,7 +34,7 @@ class StackBase:
 
     def read_data_dict(self, **index):
         result = {}
-        for l in layers:
+        for l in self.layers:
             result[l.name] = l.read(**index)
         raise NotImplementedError
 
@@ -113,11 +114,11 @@ class Stack(StackBase):
                         is_pix_res=True)
             else:
                 agg_field = this_field
-        assert (f"{name_prefix}_agg_field" not in data_dict)
+        assert (f"{name_prefix}agg_field" not in data_dict)
         data_dict[f"{name_prefix}agg_field"] = agg_field
 
         if translation_adjuster is not None:
-            translaiton = translation_adjuster(agg_field)
+            translation = translation_adjuster(agg_field)
         else:
             translation = helpers.Translation(0, 0)
         final_bcube = copy.deepcopy(bcube)

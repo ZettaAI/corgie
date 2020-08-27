@@ -3,7 +3,7 @@ import torch
 import procspec
 import cachetools
 
-from corgie import scheduling, argparsers, helpers
+from corgie import exceptions, scheduling, argparsers, helpers
 
 from corgie.log import logger as corgie_logger
 from corgie.layers import get_layer_types, DEFAULT_LAYER_TYPE, \

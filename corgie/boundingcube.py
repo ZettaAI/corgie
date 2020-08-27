@@ -175,7 +175,7 @@ class BoundingCube:
         return result
 
     def __eq__(self, x):
-        if isinstance(x, BoundingBox):
+        if isinstance(x, BoundingCube):
             return (self.m0_x == x.m0_x) and (self.m0_y == x.m0_y) and \
                     (self.z == x.z)
         return False

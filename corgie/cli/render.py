@@ -7,7 +7,7 @@ from corgie.layers import get_layer_types, DEFAULT_LAYER_TYPE, \
                              str_to_layer_type
 from corgie.boundingcube import get_bcube_from_coords
 from corgie.argparsers import LAYER_HELP_STR, \
-        create_layer_from_spec, corgie_optgroup, corgie_option
+        create_stack_from_spec, corgie_optgroup, corgie_option
 
 
 class RenderJob(scheduling.Job):
@@ -121,11 +121,10 @@ class RenderTask(scheduling.Task):
 @corgie_option('--start_coord',      nargs=1, type=str, required=True)
 @corgie_option('--end_coord',        nargs=1, type=str, required=True)
 @corgie_option('--coord_mip',        nargs=1, type=int, default=0)
-@corgie_option('--tgt_z_offset',     nargs=1, type=str, default=1)
 
 @click.pass_context
-def render(ctx, src_layer_spec, dst_folder, pad, render_masks, blackout_masks,
-         chunk_xy, chunk_z, start_coord, end_coord, coord_mip, suffix):
+def render(ctx, src_layer_spec, dst_folder, mip, pad, render_masks, blackout_masks,
+         chunk_xy, chunk_z, start_coord, end_coord, coord_mip):
     scheduler = ctx.obj['scheduler']
 
     corgie_logger.debug("Setting up layers...")
