@@ -203,6 +203,16 @@ class BoundingCube:
                            ze=self.z[1] + z,
                            mip=0)
 
+    def scale(self, factor):
+        """Return BoundingCube scaled in xy by factor
+        """
+        return BoundingCube(xs=ceil(self.m0_x[0] * factor),
+                            xe=ceil(self.m0_x[1] * factor),
+                            ys=ceil(self.m0_y[0] * factor),
+                            ye=ceil(self.m0_y[1] * factor),
+                            zs=self.z[0],
+                            ze=self.z[1],
+                            mip=0)
     def copy(self):
         return copy.deepcopy(self)
 

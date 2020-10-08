@@ -74,23 +74,20 @@ class ImgLayer(VolumetricLayer):
         super().__init__(*args, **kwargs)
         self.num_channels = num_channels
 
-    def get_downsampler(self):
-        def downsampler(data_tens):
+    def get_interpolator(self, factor=1/2):
+        def interpolator(data_tens):
             return torch.nn.functional.interpolate(data_tens.float(),
                     mode='bilinear',
-                    scale_factor=1/2,
+                    scale_factor=factor,
                     align_corners=False,
                     recompute_scale_factor=False)
-        return downsampler
+        return interpolator
 
-    def get_upsampler(self):
-        def upsampler(data_tens):
-            return torch.nn.functional.interpolate(data_tens.float(),
-                    mode='bilinear',
-                    scale_factor=2.0,
-                    align_corners=False,
-                    recompute_scale_factor=False)
-        return upsampler
+    def get_downsampler(self, factor=1/2):
+        return self.get_interpolator(factor=factor)
+
+    def get_upsampler(self, factor=2.0):
+        return self.get_interpolator(factor=factor)
 
     def get_num_channels(self, *args, **kwargs):
         return self.num_channels
@@ -108,28 +105,21 @@ class FieldLayer(VolumetricLayer):
                         ))
         super().__init__(*args, **kwargs)
 
-    def get_downsampler(self):
-        def downsampler(data_tens):
-
-            downs_data = torch.nn.functional.interpolate(data_tens.float(),
+    def get_interpolator(self, factor=1/2):
+        def interpolator(data_tens):
+            interpolated_data = torch.nn.functional.interpolate(data_tens.float(),
                                 mode='bilinear',
-                                scale_factor=1/2,
+                                scale_factor=factor,
                                 align_corners=False,
                     recompute_scale_factor=False)
-            return downs_data * 2
+            return interpolated_data * (1/factor)
+        return interpolator
 
-        return downsampler
+    def get_downsampler(self, factor=1/2):
+        return self.get_interpolator(factor=factor)
 
-    def get_upsampler(self):
-        def upsampler(data_tens):
-            ups_data = torch.nn.functional.interpolate(data_tens.float(),
-                                mode='bilinear',
-                                scale_factor=2.0,
-                                align_corners=False,
-                    recompute_scale_factor=False)
-            return ups_data * 0.5
-
-        return upsampler
+    def get_upsampler(self, factor=2.0):
+        return self.get_interpolator(factor=factor)
 
     def get_num_channels(self, *args, **kwargs):
         return 2
@@ -155,21 +145,19 @@ class MaskLayer(VolumetricLayer):
         data_bin = self.binarizer(data_tens)
         return data_bin
 
-    def get_downsampler(self):
-        def downsampler(data_tens):
+    def get_interpolator(self, factor):
+        def interpolator(data_tens):
             return torch.nn.functional.interpolate(data_tens.float(),
                     mode='nearest',
-                    scale_factor=1/2,
+                    scale_factor=factor,
                     recompute_scale_factor=False)
-        return downsampler
+        return interpolator
 
-    def get_upsampler(self):
-        def upsampler(data_tens):
-            return torch.nn.functional.interpolate(data_tens.float(),
-                    mode='nearest',
-                    scale_factor=2.0,
-                    recompute_scale_factor=False)
-        return upsampler
+    def get_downsampler(self, factor=1/2):
+        return self.get_interpolator(factor=factor)
+
+    def get_upsampler(self, factor=2.0):
+        return self.get_interpolator(factor=factor)
 
     def get_num_channels(self, *args, **kwargs):
         return 1
