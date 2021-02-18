@@ -30,7 +30,6 @@ def get_layer_types():
 
 class BaseLayerType:
     def __init__(self, name=None, device='cpu', readonly=False, **kwargs):
-        super().__init__(**kwargs)
         self.device = device
         self.readonly = readonly
         self.name = name
@@ -48,18 +47,19 @@ class BaseLayerType:
         if self.readonly:
             raise Exception("Attempting to write into a readonly layer {}".format(str(self)))
         data_tens = helpers.expand_to_dims(data_tens, 4)
-        if data_tens.dtype == torch.float64:
-            data_tens = data_tens.float()
+
         #if data_tens.dtype in [torch.float32, torch.float64]:
             #import pdb; pdb.set_trace()
             #if self.get_data_type() in ['uint8']:
             #    data_tens = data_tens * 255
             #if self.get_data_type() not in ['float32', 'float64', 'float']:
             #    raise Exception("Unknown conversiotn between float and int")
-
-        data_np = data_tens.data.cpu().numpy().astype(
-                self.get_data_type()
-                )
+        if isinstance(data_tens, np.ndarray):
+            data_np = data_tens.astype(self.get_data_type())
+        else:
+            data_np = data_tens.data.cpu().numpy().astype(
+                    self.get_data_type()
+                    )
 
         self.write_backend(data_np, **kwargs)
 
