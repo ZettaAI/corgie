@@ -9,15 +9,39 @@ from corgie.boundingcube import BoundingCube
 from corgie.layers.base import register_layer_type, BaseLayerType
 from corgie import helpers
 
+def get_extra_interpolate_parameters():
+    # torch.nn.function.interpolate complains if this
+    # argument is not provided, but it doesn't exist in older versions
+    from packaging import version
+    if version.parse(torch.__version__) <= version.parse("1.4.0"):
+        return {}
+    return {"recompute_scale_factor": False}
+
 class VolumetricLayer(BaseLayerType):
-    def __init__(self, data_mip_ranges=None, **kwargs):
+    def __init__(self, data_mip=None, **kwargs):
         super().__init__(**kwargs)
-        self.declared_write_mips = []
-        self.declared_write_bcube = BoundingCube(0, 0, 0, 0, 0, 0, 0)
+        self.data_mip = data_mip
 
     def read(self, bcube, mip, **kwargs):
         indexed_bcube = self.indexing_scheme(bcube, mip, kwargs)
-        return super().read(bcube=indexed_bcube, mip=mip, **kwargs)
+        if self.data_mip is not None:
+            if mip <= self.data_mip:
+                result_data_mip = super().read(bcube=indexed_bcube,
+                        mip=self.data_mip, **kwargs)
+                result = result_data_mip
+                for _ in range(mip, self.data_mip):
+                    result = self.get_upsampler()(result)
+            else:
+                # TODO: consider restricting MIP difference to prevent memory blow-up
+                result_data_mip = super().read(bcube=indexed_bcube,
+                        mip=self.data_mip, **kwargs)
+                result = result_data_mip
+                for _ in range(self.data_mip, mip):
+                    result = self.get_downsampler()(result)
+        else:
+            result = super().read(bcube=indexed_bcube, mip=mip, **kwargs)
+
+        return result
 
     def write(self, data_tens, bcube, mip, **kwargs):
         indexed_bcube = self.indexing_scheme(bcube, mip, kwargs)
@@ -80,7 +104,7 @@ class ImgLayer(VolumetricLayer):
                     mode='bilinear',
                     scale_factor=1/2,
                     align_corners=False,
-                    recompute_scale_factor=False)
+                    **get_extra_interpolate_parameters())
         return downsampler
 
     def get_upsampler(self):
@@ -89,7 +113,7 @@ class ImgLayer(VolumetricLayer):
                     mode='bilinear',
                     scale_factor=2.0,
                     align_corners=False,
-                    recompute_scale_factor=False)
+                    **get_extra_interpolate_parameters())
         return upsampler
 
     def get_num_channels(self, *args, **kwargs):
@@ -97,6 +121,49 @@ class ImgLayer(VolumetricLayer):
 
     def get_default_data_type(self):
         return 'uint8'
+
+
+@register_layer_type("segmentation")
+class SegmentationLayer(VolumetricLayer):
+    def __init__(self, *args, num_channels=1, **kwargs):
+        if num_channels != 1:
+            raise exceptions.ArgumentError("Segmentation layer 'num_channels'",
+                    "Segmentation layer must have 1 channels. 'num_channels' provided: {}".format(
+                        num_channels
+                        ))
+        super().__init__(*args, **kwargs)
+
+    def read(self, dtype=None, **kwargs):
+        return self.read_backend(transpose=False, **kwargs).squeeze()
+
+    def get_downsampler(self):
+        def downsampler(data_tens):
+            downs_data = torch.nn.functional.interpolate(data_tens.float(),
+                                mode='nearest',
+                                scale_factor=1/2,
+                                align_corners=False,
+                                **get_extra_interpolate_parameters())
+            return downs_data
+
+        return downsampler
+
+    def get_upsampler(self):
+        def upsampler(data_tens):
+            ups_data = torch.nn.functional.interpolate(data_tens.float(),
+                                mode='nearest',
+                                scale_factor=2.0,
+                                align_corners=False,
+                                **get_extra_interpolate_parameters())
+            return ups_data
+
+        return upsampler
+
+    def get_num_channels(self, *args, **kwargs):
+        return 1
+
+    def get_default_data_type(self):
+        return 'uint64'
+
 
 @register_layer_type("field")
 class FieldLayer(VolumetricLayer):
@@ -115,8 +182,8 @@ class FieldLayer(VolumetricLayer):
                                 mode='bilinear',
                                 scale_factor=1/2,
                                 align_corners=False,
-                    recompute_scale_factor=False)
-            return downs_data * 2
+                                **get_extra_interpolate_parameters())
+            return downs_data * 0.5
 
         return downsampler
 
@@ -126,8 +193,8 @@ class FieldLayer(VolumetricLayer):
                                 mode='bilinear',
                                 scale_factor=2.0,
                                 align_corners=False,
-                    recompute_scale_factor=False)
-            return ups_data * 0.5
+                                **get_extra_interpolate_parameters())
+            return ups_data * 2
 
         return upsampler
 
@@ -157,10 +224,7 @@ class MaskLayer(VolumetricLayer):
 
     def get_downsampler(self):
         def downsampler(data_tens):
-            return torch.nn.functional.interpolate(data_tens.float(),
-                    mode='nearest',
-                    scale_factor=1/2,
-                    recompute_scale_factor=False)
+            return torch.nn.functional.max_pool2d(data_tens.float(), kernel_size=2)
         return downsampler
 
     def get_upsampler(self):
@@ -168,7 +232,7 @@ class MaskLayer(VolumetricLayer):
             return torch.nn.functional.interpolate(data_tens.float(),
                     mode='nearest',
                     scale_factor=2.0,
-                    recompute_scale_factor=False)
+                    **get_extra_interpolate_parameters())
         return upsampler
 
     def get_num_channels(self, *args, **kwargs):

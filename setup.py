@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="corgie",
-    version="0.0.7",
+    version="0.0.9",
     author="Sergiy Popovych",
     author_email="sergiy.popovich@gmail.com",
     description="Connectomics Registration General Inference Engine",
@@ -16,18 +16,25 @@ setuptools.setup(
     package_data={'': ['*.py']},
     install_requires=[
       'sphinx-click',
+      'torchfields',
       'torch',
+      'artificery',
       'gevent',
       'torchvision',
       'numpy',
       'six',
       'pyyaml',
       'mazepa',
-      'click',
       'click-option-group',
+      'click',
       'procspec',
       'modelhouse',
       'scipy',
+      'cloud-volume',
+      'scikit-image',
+      'h5py',
+      'kimimaro',
+      'docutils==0.15.0'
     ],
     entry_points={
         "console_scripts": [

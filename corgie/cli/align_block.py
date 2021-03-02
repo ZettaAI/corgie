@@ -43,13 +43,17 @@ class AlignBlockJob(scheduling.Job):
             z_start = self.bcube.z_range()[1]
             z_end = self.bcube.z_range()[0]
             z_step = -1
+        seethrough_offset = -z_step
 
-        start_sec_bcube = self.bcube.reset_coords(zs=z_start, ze=z_start + 1, in_place=False)
+        start_sec_bcube = self.bcube.reset_coords(
+                zs=z_start, ze=z_start + 1, in_place=False)
         if self.copy_start:
             render_job = self.render_method(
                     src_stack=self.src_stack,
                     dst_stack=self.dst_stack,
-                    bcube=start_sec_bcube)
+                    bcube=start_sec_bcube,
+                    seethrough=False,
+                    blackout_masks=True)
 
             yield from render_job.task_generator
             yield scheduling.wait_until_done
@@ -57,6 +61,7 @@ class AlignBlockJob(scheduling.Job):
 
         align_field_layer = self.dst_stack.create_sublayer(f'align_field{self.suffix}',
                 layer_type='field', overwrite=True)
+        #self.src_stack.add_layer(align_field_layer)
 
         for z in range(z_start + z_step, z_end + z_step, z_step):
             tgt_bcube = src_bcube
@@ -66,6 +71,7 @@ class AlignBlockJob(scheduling.Job):
                     tgt_stack=self.dst_stack,
                     bcube=src_bcube,
                     tgt_z_offset=-z_step,
+                    suffix=self.suffix,
                     dst_layer=align_field_layer)
 
             yield from compute_field_job.task_generator
@@ -75,6 +81,9 @@ class AlignBlockJob(scheduling.Job):
                     src_stack=self.src_stack,
                     dst_stack=self.dst_stack,
                     bcube=src_bcube,
+                    seethrough=True,
+                    blackout_masks=False,
+                    seethrough_offset=seethrough_offset,
                     additional_fields=[align_field_layer]
                     )
 
@@ -105,18 +114,20 @@ class AlignBlockJob(scheduling.Job):
 #@corgie_option('--seethrough_masks',    nargs=1, type=bool, default=False)
 #@corgie_option('--seethrough_misalign', nargs=1, type=bool, default=False)
 @corgie_option('--render_pad',          nargs=1, type=int,  default=512)
-@corgie_option('--render_chunk_xy',     nargs=1, type=int,  default=3072)
+@corgie_option('--render_chunk_xy',     nargs=1, type=int,  default=1024)
 
 @corgie_optgroup('Compute Field Method Specification')
 @corgie_option('--processor_spec',      nargs=1, type=str, required=True,
         multiple=True)
 @corgie_option('--chunk_xy',      '-c', nargs=1, type=int, default=1024)
+@corgie_option('--blend_xy',             nargs=1, type=int, default=0)
+@corgie_option('--force_chunk_xy',  is_flag=True)
 @corgie_option('--pad',                 nargs=1, type=int, default=256)
 @corgie_option('--crop',                nargs=1, type=int, default=None)
 @corgie_option('--processor_mip', '-m', nargs=1, type=int, required=True,
         multiple=True)
 @corgie_option('--copy_start/--no_copy_start',             default=True)
-@corgie_option('--mode', type=click.Choice(['forward', 'backword', 'bidirectional']),
+@corgie_option('--mode', type=click.Choice(['forward', 'backward', 'bidirectional']),
         default='forward')
 
 @corgie_optgroup('Data Region Specification')
@@ -127,7 +138,7 @@ class AlignBlockJob(scheduling.Job):
 @click.pass_context
 def align_block(ctx, src_layer_spec, tgt_layer_spec, dst_folder, render_pad, render_chunk_xy,
         processor_spec, pad, crop, processor_mip, chunk_xy, start_coord, end_coord, coord_mip,
-        suffix, copy_start, mode, chunk_z=1):
+        blend_xy, force_chunk_xy, suffix, copy_start, mode, chunk_z=1):
     scheduler = ctx.obj['scheduler']
 
     if suffix is None:
@@ -140,22 +151,23 @@ def align_block(ctx, src_layer_spec, tgt_layer_spec, dst_folder, render_pad, ren
     corgie_logger.debug("Setting up layers...")
     src_stack = create_stack_from_spec(src_layer_spec,
             name='src', readonly=True)
+    src_stack.folder = dst_folder
 
     tgt_stack = create_stack_from_spec(tgt_layer_spec,
             name='tgt', readonly=True, reference=src_stack)
 
+    force_chunk_xy = chunk_xy if force_chunk_xy else None
     dst_stack = stack.create_stack_from_reference(reference_stack=src_stack,
             folder=dst_folder, name="dst", types=["img", "mask"], readonly=False,
-            suffix=suffix, overwrite=True)
+            suffix=suffix, force_chunk_xy=force_chunk_xy, overwrite=True)
 
     render_method = helpers.PartialSpecification(
             f=RenderJob,
             pad=render_pad,
             chunk_xy=render_chunk_xy,
             chunk_z=1,
-            blackout_masks=False,
-            render_masks=True,
-            mip=min(processor_mip)
+            render_masks=False,
+            mips=processor_mip
             )
 
     cf_method = helpers.PartialSpecification(
@@ -165,6 +177,7 @@ def align_block(ctx, src_layer_spec, tgt_layer_spec, dst_folder, render_pad, ren
             processor_mip=processor_mip,
             processor_spec=processor_spec,
             chunk_xy=chunk_xy,
+            blend_xy=blend_xy,
             chunk_z=1
             )
 

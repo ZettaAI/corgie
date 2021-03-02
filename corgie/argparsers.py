@@ -40,10 +40,13 @@ def create_layer_from_spec(spec_str, reference=None, caller_name=None,
             "name": None,
             "type": default_type,
             "data_backend": DEFAULT_DATA_BACKEND,
-            "args": {}
+            "args": {},
+            "readonly": False
             }
-
     param_dict = json.loads(spec_str)
+    for k in param_dict.keys():
+        if k not in default_param_dict:
+            raise exceptions.CorgieException(f"Unkown layer parameter '{k}'")
     params = {**default_param_dict, **param_dict}
 
     if params["path"] is None:
@@ -61,7 +64,8 @@ def create_layer_from_spec(spec_str, reference=None, caller_name=None,
         ))
 
     if allowed_types is not None and layer_type not in allowed_types:
-        raise exceptions.ArgumentError(arg_spec, 'must be of type in {allowed_types}')
+        raise exceptions.ArgumentError("layer_type",
+                f'must be of type in {allowed_types}')
 
     backend = str_to_backend(data_backend)()
 
@@ -92,5 +96,6 @@ def create_stack_from_spec(spec_str_list, name, reference=None, readonly=False,
                 for s in spec_str_list]
         for l in layer_list:
             stack.add_layer(l)
+
     return stack
 

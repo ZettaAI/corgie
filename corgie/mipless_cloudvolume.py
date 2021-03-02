@@ -1,5 +1,6 @@
 import json
 import six
+import copy
 
 import cloudvolume
 from cloudvolume import CloudVolume, Storage
@@ -49,20 +50,24 @@ class MiplessCloudVolume():
         self.path = path
         self.allow_info_writes = allow_info_writes
         self.cv_params = {}
-        self.cv_params['bounded'] = False
-        self.cv_params['progress'] = False
-        self.cv_params['autocrop'] = False
-        self.cv_params['non_aligned_writes'] = False
-        self.cv_params['cdn_cache'] = False
-        self.cv_params['fill_missing'] = True
+        if 'cv_params' in kwargs:
+            self.cv_params.update(kwargs['cv_params'])
+        self.cv_params.setdefault('bounded', False)
+        self.cv_params.setdefault('progress', False)
+        self.cv_params.setdefault('autocrop', False)
+        self.cv_params.setdefault('non_aligned_writes', False)
+        self.cv_params.setdefault('cdn_cache', False)
+        self.cv_params.setdefault('fill_missing', True)
+        self.cv_params.setdefault('agglomerate', True)
 
-        for k, v in six.iteritems(kwargs):
-            self.cv_params[k] = v
+        # for k, v in six.iteritems(kwargs):
+        #     self.cv_params[k] = v
 
         self.default_chunk = default_chunk
 
         self.obj = obj
         self.cvs = {}
+
         if 'info' in self.cv_params and overwrite:
             self.store_info()
 
@@ -117,10 +122,51 @@ class MiplessCloudVolume():
 
             self.store_info(tmp_cv.info)
 
+    def extend_info_to_mip(self, mip):
+        info = self.get_info()
+        highest_mip = len(info['scales']) - 1
+        highest_mip_info = info['scales'][-1]
+
+        if highest_mip >= mip:
+            return
+
+        while (highest_mip < mip):
+            new_highest_mip_info = copy.deepcopy(highest_mip_info)
+            #size
+            #voxel offset
+            #resolution -> key
+            new_highest_mip_info['size'] = [
+                    highest_mip_info['size'][0] // 2,
+                    highest_mip_info['size'][1] // 2,
+                    highest_mip_info['size'][2]
+                ]
+
+            new_highest_mip_info['voxel_offset'] = [
+                    highest_mip_info['voxel_offset'][0] // 2,
+                    highest_mip_info['voxel_offset'][1] // 2,
+                    highest_mip_info['voxel_offset'][2]
+                ]
+
+            new_highest_mip_info['resolution'] = [
+                    highest_mip_info['resolution'][0] * 2,
+                    highest_mip_info['resolution'][1] * 2,
+                    highest_mip_info['resolution'][2]
+                ]
+
+            new_highest_mip_info['key'] = '_'.join([str(i) for i in new_highest_mip_info['resolution']])
+            info['scales'].append(new_highest_mip_info)
+            highest_mip += 1
+            highest_mip_info = new_highest_mip_info
+
+        self.store_info()
+
     def create(self, mip):
 
         corgie_logger.debug('Creating CloudVolume for {0} at MIP{1}'.format(self.path, mip))
+        self.extend_info_to_mip(mip)
+
         self.cvs[mip] = self.obj(self.path, mip=mip, **self.cv_params)
+
 
         #if self.mkdir:
         #  self.cvs[mip].commit_info()

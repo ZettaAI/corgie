@@ -17,6 +17,20 @@ def get_bcube_from_coords(start_coord, end_coord, coord_mip,
 
     return bcube
 
+def get_bcube_from_vertices(vertices, resolution, mip, cant_be_empty=True):
+    bcube_args = []
+    for dim in range(3):
+        dim_min = min(vertices[:,dim]) / resolution[dim]
+        dim_max = max(vertices[:,dim]) / resolution[dim] + 1
+        bcube_args.append(dim_min)
+        bcube_args.append(dim_max)
+    bcube = BoundingCube(*bcube_args, mip)
+    if cant_be_empty and bcube.area() * bcube.z_size() == 0:
+        raise Exception("Attempted creation of an empty bounding "
+                "when 'cant_be_empty' flag is set to True")
+
+    return bcube
+
 class BoundingCube:
     def __init__(self, xs, xe, ys, ye, zs, ze, mip):
         self.m0_x = (None, None)
@@ -128,6 +142,17 @@ class BoundingCube:
     def z_size(self):
         return int(self.z[1] - self.z[0])
 
+    def minpt(self, mip=0):
+        return np.array([self.x_range(mip)[0], self.y_range(mip)[0], self.z_range()[0]])
+
+    def maxpt(self, mip=0):
+        return np.array([self.x_range(mip)[1], self.y_range(mip)[1], self.z_range()[1]])
+
+    def to_filename(self, mip=0):
+        minpt = self.minpt(mip)
+        maxpt = self.maxpt(mip)
+        return '_'.join((str(minpt[i]) + '-' + str(maxpt[i]) for i in range(3)))
+
     @property
     def size(self, mip=0):
         return self.x_size(mip=mip), self.y_size(mip=mip), self.z_size()
@@ -145,7 +170,7 @@ class BoundingCube:
         """
         scale_factor = 2**mip
         m0_crop_xy = crop_xy * scale_factor
-        result = self.copy()
+        result = self.clone()
         result.reset_coords(xs=self.m0_x[0] - m0_crop_xy,
                         xe=self.m0_x[1] + m0_crop_xy,
                         ys=self.m0_y[0] - m0_crop_xy,
@@ -188,7 +213,7 @@ class BoundingCube:
     def __repr__(self):
         return self.__str__(mip=0)
 
-    def translate(self, x=0, y=0, z=0, mip=0):
+    def translate_v1(self, x=0, y=0, z=0, mip=0):
         assert isinstance(x, int)
         assert isinstance(y, int)
         assert isinstance(z, int)
@@ -201,10 +226,25 @@ class BoundingCube:
                            ye=self.m0_y[1] + y,
                            zs=self.z[0] + z,
                            ze=self.z[1] + z,
-                           mip=0)
+                           mip=mip)
 
-    def copy(self):
+    def clone(self):
         return copy.deepcopy(self)
+
+    def translate(self, z_offset=0, x_offset=0, y_offset=0, mip=0):
+        x_range = self.x_range(mip=mip)
+        y_range = self.y_range(mip=mip)
+        z_range = self.z_range()
+        return BoundingCube(
+                xs=x_range[0] + x_offset,
+                xe=x_range[1] + x_offset,
+                ys=y_range[0] + y_offset,
+                ye=y_range[1] + y_offset,
+                zs=z_range[0] + z_offset,
+                ze=z_range[1] + z_offset,
+                mip=mip
+            )
+
 
     def to_slices(self, zs, ze=None, mip=0):
         x_range = self.x_range(mip=mip)
