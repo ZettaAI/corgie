@@ -52,6 +52,8 @@ class MiplessCloudVolume():
         self.cv_params = {}
         if 'cv_params' in kwargs:
             self.cv_params.update(kwargs['cv_params'])
+        if 'info' in kwargs:
+            self.cv_params['info'] = kwargs['info']
         self.cv_params.setdefault('bounded', False)
         self.cv_params.setdefault('progress', False)
         self.cv_params.setdefault('autocrop', False)
